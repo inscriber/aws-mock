@@ -11,6 +11,7 @@ import java.util.UUID;
 
 import javax.servlet.http.HttpServletResponse;
 
+import com.tlswe.awsmock.ec2.cxf_generated.*;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,23 +20,6 @@ import com.tlswe.awsmock.common.exception.AwsMockException;
 import com.tlswe.awsmock.common.util.Constants;
 import com.tlswe.awsmock.common.util.PropertiesUtils;
 import com.tlswe.awsmock.common.util.TemplateUtils;
-import com.tlswe.awsmock.ec2.cxf_generated.DescribeImagesResponseInfoType;
-import com.tlswe.awsmock.ec2.cxf_generated.DescribeImagesResponseItemType;
-import com.tlswe.awsmock.ec2.cxf_generated.DescribeImagesResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.DescribeInstancesResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.GroupItemType;
-import com.tlswe.awsmock.ec2.cxf_generated.GroupSetType;
-import com.tlswe.awsmock.ec2.cxf_generated.InstanceStateChangeSetType;
-import com.tlswe.awsmock.ec2.cxf_generated.InstanceStateType;
-import com.tlswe.awsmock.ec2.cxf_generated.PlacementResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.ReservationInfoType;
-import com.tlswe.awsmock.ec2.cxf_generated.ReservationSetType;
-import com.tlswe.awsmock.ec2.cxf_generated.RunInstancesResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.RunningInstancesItemType;
-import com.tlswe.awsmock.ec2.cxf_generated.RunningInstancesSetType;
-import com.tlswe.awsmock.ec2.cxf_generated.StartInstancesResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.StopInstancesResponseType;
-import com.tlswe.awsmock.ec2.cxf_generated.TerminateInstancesResponseType;
 import com.tlswe.awsmock.ec2.exception.BadEc2RequestException;
 import com.tlswe.awsmock.ec2.model.AbstractMockEc2Instance;
 import com.tlswe.awsmock.ec2.servlet.MockEc2EndpointServlet;
@@ -193,6 +177,24 @@ public final class MockEC2QueryHandler {
                             responseXml = JAXBUtil.marshall(runInstances(imageID, instanceType, minCount, maxCount),
                                     "RunInstancesResponse", version);
 
+                        } else if ("RequestSpotInstances".equals(action)) {
+
+                            String spotPrice = queryParams.get("SpotPrice")[0];
+                            responseXml = JAXBUtil.marshall(requestSpotInstances(spotPrice),
+                                    "RequestSpotInstances", version);
+
+                        } else if ("CancelSpotInstanceRequests".equals(action)) {
+
+                            Set<String> requestIDs = parseRequestIDs(queryParams);
+                            responseXml = JAXBUtil.marshall(cancelSpotInstanceRequests(requestIDs),
+                                    "CancelSpotInstanceRequests", version);
+
+                        } else if ("DescribeSpotInstanceRequests".equals(action)) {
+
+                            Set<String> requestIDs = parseRequestIDs(queryParams);
+                            responseXml = JAXBUtil.marshall(describeSpotInstanceRequests(requestIDs),
+                                    "DescribeSpotInstanceRequests", version);
+
                         } else if ("DescribeImages".equals(action)) {
                             responseXml = JAXBUtil.marshall(describeImages(), "DescribeImagesResponse", version);
                         } else {
@@ -231,7 +233,8 @@ public final class MockEC2QueryHandler {
                                 // response
                                 response.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
                                 String allImplementedActions = "runInstances|stopInstances|startInstances|"
-                                        + "terminateInstances|describeInstances|describeImages";
+                                        + "terminateInstances|describeInstances|describeImages|requestSpotInstances|"
+                                        + "cancelSpotInstanceRequests|describeSpotInstanceRequests";
                                 responseXml = getXmlError("NotImplementedAction", "Action '" + action
                                         + "' has not been implemented yet in aws-mock. "
                                         + "For now we only support actions as following: " + allImplementedActions);
@@ -272,6 +275,21 @@ public final class MockEC2QueryHandler {
         Set<Map.Entry<String, String[]>> entries = queryParams.entrySet();
         for (Map.Entry<String, String[]> entry : entries) {
             if (null != entry && null != entry.getKey() && entry.getKey().matches("InstanceId\\.(\\d)+")) {
+                if (null != entry.getValue() && entry.getValue().length > 0) {
+                    ret.add(entry.getValue()[0]);
+                }
+            }
+        }
+        return ret;
+    }
+
+
+    private Set<String> parseRequestIDs(final Map<String, String[]> queryParams) {
+        Set<String> ret = new TreeSet<String>();
+
+        Set<Map.Entry<String, String[]>> entries = queryParams.entrySet();
+        for (Map.Entry<String, String[]> entry : entries) {
+            if (null != entry && null != entry.getKey() && entry.getKey().matches("SpotInstanceRequestId\\.(\\d)+")) {
                 if (null != entry.getValue() && entry.getValue().length > 0) {
                     ret.add(entry.getValue()[0]);
                 }
@@ -454,6 +472,35 @@ public final class MockEC2QueryHandler {
         InstanceStateChangeSetType changeSet = new InstanceStateChangeSetType();
         changeSet.getItem().addAll(mockEc2Controller.terminateInstances(instanceIDs));
         ret.setInstancesSet(changeSet);
+        return ret;
+    }
+
+
+    private RequestSpotInstancesResponseType requestSpotInstances(String spotPrice) {
+        RequestSpotInstancesResponseType ret = new RequestSpotInstancesResponseType();
+        ret.setRequestId(UUID.randomUUID().toString());
+        SpotInstanceRequestSetItemType requestItem = mockEc2Controller.requestSpotInstances(spotPrice);
+        SpotInstanceRequestSetType requestSet = new SpotInstanceRequestSetType();
+        requestSet.getItem().add(requestItem);
+        ret.setSpotInstanceRequestSet(requestSet);
+        return ret;
+    }
+
+
+    private CancelSpotInstanceRequestsResponseType cancelSpotInstanceRequests(final Set<String> requestIDs) {
+        CancelSpotInstanceRequestsResponseType ret = new CancelSpotInstanceRequestsResponseType();
+        ret.setRequestId(UUID.randomUUID().toString());
+        CancelSpotInstanceRequestsResponseSetType requestSet = mockEc2Controller.cancelSpotInstanceRequests(requestIDs);
+        ret.setSpotInstanceRequestSet(requestSet);
+        return ret;
+    }
+
+
+    private DescribeSpotInstanceRequestsResponseType describeSpotInstanceRequests(final Set<String> requestIDs) {
+        DescribeSpotInstanceRequestsResponseType ret = new DescribeSpotInstanceRequestsResponseType();
+        ret.setRequestId(UUID.randomUUID().toString());
+        SpotInstanceRequestSetType requestSet = mockEc2Controller.describeSpotInstanceRequests(requestIDs);
+        ret.setSpotInstanceRequestSet(requestSet);
         return ret;
     }
 

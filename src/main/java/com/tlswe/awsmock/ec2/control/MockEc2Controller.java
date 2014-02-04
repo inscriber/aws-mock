@@ -1,15 +1,10 @@
 package com.tlswe.awsmock.ec2.control;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.tlswe.awsmock.common.exception.AwsMockException;
-import com.tlswe.awsmock.ec2.cxf_generated.InstanceStateChangeType;
-import com.tlswe.awsmock.ec2.cxf_generated.InstanceStateType;
+import com.tlswe.awsmock.ec2.cxf_generated.*;
 import com.tlswe.awsmock.ec2.exception.BadEc2RequestException;
 import com.tlswe.awsmock.ec2.model.AbstractMockEc2Instance;
 import com.tlswe.awsmock.ec2.model.AbstractMockEc2Instance.InstanceType;
@@ -49,6 +44,11 @@ public final class MockEc2Controller {
     private final Map<String, AbstractMockEc2Instance> allMockEc2Instances =
             new ConcurrentHashMap<String, AbstractMockEc2Instance>();
 
+    /**
+     * A map of all spot instance requests. requestId as key.
+     */
+    private final Map<String, SpotInstanceRequestSetItemType> allSpotInstanceRequests =
+            new ConcurrentHashMap<String, SpotInstanceRequestSetItemType>();
 
     /**
      * Constructor of MockEc2Controller is made private and only called once by {@link #getInstance()}.
@@ -89,6 +89,17 @@ public final class MockEc2Controller {
         } else {
             return getInstances(instanceIDs);
         }
+    }
+
+
+    public SpotInstanceRequestSetItemType requestSpotInstances(String spotPrice) {
+        final short REQUEST_ID_POSTFIX_LENGTH = 8;
+        String requestId = "sir-" + UUID.randomUUID().toString().substring(0, REQUEST_ID_POSTFIX_LENGTH);
+        SpotInstanceRequestSetItemType requestItem = new SpotInstanceRequestSetItemType();
+        requestItem.setSpotInstanceRequestId(requestId);
+        requestItem.setSpotPrice(spotPrice);
+        allSpotInstanceRequests.put(requestId, requestItem);
+        return requestItem;
     }
 
 
@@ -350,4 +361,32 @@ public final class MockEc2Controller {
         }
     }
 
+
+    public CancelSpotInstanceRequestsResponseSetType cancelSpotInstanceRequests(Set<String> requestIDs) {
+        CancelSpotInstanceRequestsResponseSetType ret = new CancelSpotInstanceRequestsResponseSetType();
+        for (String requestID : requestIDs) {
+            SpotInstanceRequestSetItemType requestItem = allSpotInstanceRequests.remove(requestID);
+            CancelSpotInstanceRequestsResponseSetItemType cancelRequestItem =
+                    new CancelSpotInstanceRequestsResponseSetItemType();
+            cancelRequestItem.setSpotInstanceRequestId(requestItem.getSpotInstanceRequestId());
+            ret.getItem().add(cancelRequestItem);
+        }
+        return ret;
+    }
+
+
+    public SpotInstanceRequestSetType describeSpotInstanceRequests(Set<String> requestIDs) {
+        SpotInstanceRequestSetType ret = new SpotInstanceRequestSetType();
+
+        if (requestIDs.isEmpty()) {
+            ret.getItem().addAll(allSpotInstanceRequests.values());
+        } else {
+            for (String requestID : requestIDs) {
+                SpotInstanceRequestSetItemType requestItem = allSpotInstanceRequests.get(requestID);
+                ret.getItem().add(requestItem);
+            }
+        }
+
+        return ret;
+    }
 }
